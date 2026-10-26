@@ -1,0 +1,10 @@
+# User-specific config (paths, chosen variants)
+config.json
+
+# Golden template profiles -- contain your extensions and personal settings.
+# Never commit these; they are machine- and user-bound.
+templates/
+
+# Python
+__pycache__/
+*.pyc

@@ -1,0 +1,20 @@
+{
+  "_comment": "Copy this file to config.json and edit. 'executable': null means auto-detect; ungoogled-chromium usually needs an explicit path. 'template': null means templates/<variant>. 'flags' are extra command-line flags for that variant.",
+
+  "default_variant": "chrome",
+
+  "variants": {
+    "chrome": {
+      "browser": "chrome",
+      "executable": null,
+      "template": null,
+      "flags": []
+    },
+    "ungoogled": {
+      "browser": "ungoogled",
+      "executable": "/path/to/ungoogled-chromium",
+      "template": null,
+      "flags": []
+    }
+  }
+}

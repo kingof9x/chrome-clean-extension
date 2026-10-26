@@ -1,0 +1,82 @@
+name: Release
+
+# Builds standalone, single-file executables for Windows, macOS and Linux so
+# users can run cleanbrowse WITHOUT installing Python, then attaches them to a
+# GitHub Release.
+#
+# Trigger: push a version tag, e.g.
+#     git tag v0.1.0
+#     git push origin v0.1.0
+# or run manually from the Actions tab (workflow_dispatch) to test the build
+# without publishing a release.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: cleanbrowse-linux
+          - os: macos-latest
+            asset: cleanbrowse-macos
+          - os: windows-latest
+            asset: cleanbrowse-windows.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: python -m pip install --upgrade pyinstaller
+
+      - name: Build single-file executable
+        run: pyinstaller --onefile --name cleanbrowse cleanbrowse.py
+
+      - name: Rename for this OS (unix)
+        if: runner.os != 'Windows'
+        run: mv dist/cleanbrowse "dist/${{ matrix.asset }}"
+
+      - name: Rename for this OS (windows)
+        if: runner.os == 'Windows'
+        run: Rename-Item dist/cleanbrowse.exe ${{ matrix.asset }}
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true

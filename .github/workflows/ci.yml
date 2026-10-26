@@ -1,0 +1,47 @@
+name: CI
+
+# Validates the launcher and config/policy JSON on all three target OSes.
+# cleanbrowse has no third-party dependencies, so this is a fast sanity check:
+# the script byte-compiles, and every shipped JSON file is well-formed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: validate (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.9", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Byte-compile the launcher
+        run: python -m py_compile cleanbrowse.py
+
+      - name: Validate JSON files
+        shell: python
+        run: |
+          import json, glob, sys
+          files = ["config.example.json", "policies/managed_policy.json"]
+          for f in files:
+              with open(f, encoding="utf-8") as fh:
+                  json.load(fh)
+              print(f"ok: {f}")
+
+      - name: Smoke-test the CLI (no browser needed)
+        run: |
+          python cleanbrowse.py --help
+          python cleanbrowse.py list

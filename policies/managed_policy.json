@@ -1,0 +1,21 @@
+{
+  "_comment": "OPTIONAL. Enforced hardening via Chromium enterprise policy, for fleet/client deployment or if you want settings locked rather than baked into the template. Compatibility-safe: nothing here breaks streaming DRM, bank fraud checks, or 'Sign in with Google'. See policies/README.md for where to install it (and that Chrome vs ungoogled-chromium read DIFFERENT policy locations).",
+
+  "MetricsReportingEnabled": false,
+  "SyncDisabled": true,
+  "BrowserSignin": 0,
+  "BackgroundModeEnabled": false,
+  "DefaultBrowserSettingEnabled": false,
+  "PromotionalTabsEnabled": false,
+  "SafeBrowsingProtectionLevel": 1,
+  "DnsOverHttpsMode": "automatic",
+  "PasswordManagerEnabled": false,
+  "SearchSuggestEnabled": false,
+  "SpellCheckServiceEnabled": false,
+  "UrlKeyedAnonymizedDataCollectionEnabled": false,
+
+  "_ExtensionInstallForcelist_note": "Uncomment below to force-install extensions by ID regardless of the template. Format: \"<id>;https://clients2.google.com/service/update2/crx\".",
+  "_ExtensionInstallForcelist": [
+    "cjpalhdlnbpafiamejdnhcphjbkeiagm;https://clients2.google.com/service/update2/crx"
+  ]
+}

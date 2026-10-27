@@ -161,6 +161,59 @@ pyinstaller --onefile --name cleanbrowse cleanbrowse.py
 # result in dist/cleanbrowse (or dist\cleanbrowse.exe on Windows)
 ```
 
+## Testing checklist
+
+Run this before tagging a release, and re-run the **Core behaviour** and
+**Compatibility** sections on each OS you actually use. "Session" below means one
+`run` → browse → close cycle.
+
+### Core behaviour — the wipe/keep contract
+
+- [ ] `setup --variant chrome` opens the template; installed extensions and prefs persist after closing.
+- [ ] `setup --variant ungoogled` does the same for the ungoogled template.
+- [ ] `list` shows both variants and correctly reports template "ready" vs "no template yet".
+- [ ] After `run`, trusted extensions are present and enabled in the session.
+- [ ] Extension **settings** carry over between sessions (e.g. password-manager vault config, content-blocker filter lists).
+- [ ] Browsing data does **not** carry over: new session has no history, no cookies, no autofill, no open tabs from last time.
+- [ ] Logging into a site, closing, and reopening requires logging in again (cookies/site storage gone).
+- [ ] Downloads initiated in a session land in the real Downloads folder and survive the wipe (they're outside the temp profile).
+- [ ] On exit, the temp profile directory is actually deleted (check the OS temp dir for leftover `cleanbrowse-*` folders).
+- [ ] `run --keep` leaves the temp profile behind and prints its path (debug path works).
+- [ ] Force-quitting / crashing the browser doesn't leave a `cleanbrowse-*` temp profile lingering forever (note any that do).
+
+### Compatibility — the things LibreWolf-style hardening usually breaks
+
+- [ ] **Streaming DRM:** Netflix/Spotify/Disney+ play video on the `chrome` variant (Widevine present).
+- [ ] ungoogled variant: confirm DRM behaviour (expected to fail until Widevine is added) and that the README matches reality.
+- [ ] **Google sign-in** works on the `chrome` variant, including phone 2FA.
+- [ ] ungoogled variant: note whether Google flags it as an "insecure browser".
+- [ ] A bank login completes without being blocked by fraud/device checks.
+- [ ] "Sign in with Google" (federated SSO) on a third-party site completes (third-party cookie flow not broken).
+- [ ] 2FA fires every session (expected) — confirm no stale "remember this device" token survives the wipe.
+- [ ] DNS-over-HTTPS is active in-session (`chrome://settings/security` or a DNS leak check).
+
+### Cross-platform
+
+- [ ] Browser auto-detection finds Chrome on Windows, macOS, and Linux without a `config.json`.
+- [ ] Auto-detection finds (or gracefully fails with a clear message for) ungoogled-chromium, which usually needs an explicit `executable` path.
+- [ ] A `config.json` with custom `executable`, `flags`, and `template` paths is honoured.
+- [ ] Paths with spaces (e.g. macOS `/Applications/Google Chrome.app/...`) work.
+- [ ] Template built on one machine, used on the same machine — no "settings were reset" nag.
+
+### Policy / fleet (optional feature)
+
+- [ ] `policies/managed_policy.json` installed to the correct per-OS location is reflected at `chrome://policy`.
+- [ ] Chrome vs ungoogled read their **different** policy locations correctly (both documented paths work).
+- [ ] `ExtensionInstallForcelist` (when enabled) force-installs the listed extension by ID.
+- [ ] Policy hardening does not break DRM, bank, or Google login (re-run Compatibility with policy applied).
+
+### CI / release automation
+
+- [ ] CI workflow passes on all three OSes for the supported Python versions.
+- [ ] Pushing a `v*` tag builds all three binaries and attaches them to a GitHub Release.
+- [ ] Each downloaded binary runs `--help` and `list` on its OS **without Python installed**.
+- [ ] macOS/Linux binaries are executable after `chmod +x`; the Gatekeeper "open anyway" step is accurate.
+
 ## Caveats
 
 - `run` launches one browser process and waits for it to exit before wiping. If your

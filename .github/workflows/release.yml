@@ -4,13 +4,19 @@ name: Release
 # users can run cleanbrowse WITHOUT installing Python, then attaches them to a
 # GitHub Release.
 #
-# Trigger: push a version tag, e.g.
-#     git tag v0.1.0
-#     git push origin v0.1.0
-# or run manually from the Actions tab (workflow_dispatch) to test the build
-# without publishing a release.
+# Triggers (any of these builds the binaries AND attaches them to the release):
+#   1. Create a release in the GitHub UI ("Releases" -> "Draft a new release",
+#      pick or create any tag, Publish). This is the easiest way.
+#   2. Push a version tag from the CLI:
+#          git tag v0.1.0
+#          git push origin v0.1.0
+#      (A release is created automatically for the tag.)
+#   3. Run manually from the Actions tab (workflow_dispatch) to test the build
+#      only -- binaries are kept as run artifacts, nothing is published.
 
 on:
+  release:
+    types: [published]
   push:
     tags: ["v*"]
   workflow_dispatch:
@@ -65,7 +71,8 @@ jobs:
     name: publish release
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Publish for a UI-created release or a pushed tag; skip for manual test runs.
+    if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:
@@ -74,9 +81,10 @@ jobs:
         with:
           path: artifacts
 
-      - name: Publish GitHub Release
+      - name: Attach binaries to the release
         uses: softprops/action-gh-release@v2
         with:
+          # Target the release that triggered this run, or the pushed tag.
+          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
           files: artifacts/**/*
-          generate_release_notes: true
           fail_on_unmatched_files: true

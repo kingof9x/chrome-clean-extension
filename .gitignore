@@ -8,3 +8,6 @@ templates/
 # Python
 __pycache__/
 *.pyc
+
+# Generated native-messaging host shim/manifest
+.host/

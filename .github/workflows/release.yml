@@ -49,8 +49,10 @@ jobs:
       - name: Install PyInstaller
         run: python -m pip install --upgrade pyinstaller
 
-      - name: Build single-file executable
-        run: pyinstaller --onefile --name cleanbrowse cleanbrowse.py
+      - name: Build single-file app (GUI + CLI + native host in one binary)
+        run: >-
+          pyinstaller --onefile --windowed --name cleanbrowse
+          --hidden-import cleanbrowse_gui cleanbrowse.py
 
       - name: Rename for this OS (unix)
         if: runner.os != 'Windows'
@@ -76,12 +78,19 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Attach binaries to the release
+      - name: Package the companion extension
+        run: |
+          cd extension
+          zip -r ../artifacts/extension.zip . -x '*.DS_Store'
+
+      - name: Attach binaries + extension to the release
         uses: softprops/action-gh-release@v2
         with:
           # Target the release that triggered this run, or the pushed tag.

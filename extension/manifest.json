@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "cleanbrowse control",
+  "version": "0.1.0",
+  "description": "Start a clean, wiped-but-extensions-kept browsing session from inside the browser.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsYNNs4oz601t+u6pkiJZK/MYJQZgWmE1i/VQUOAojDaV0sCp7bWbaDlTrJB23KOTyYvBUR3LBDMMTwGU+oX0OxpzJIEMt2DbqlOlvr2Cg8zT1EThYrGyYUe+d8xuppQjDbmKtgq2sNesFZUSWfT2LWDI/HgzT0ND7DOrFXSQz/RKtQHIyAovD+bJH4kBcV3+d3a7WL88ZbCq/Tq5e661DqCJcANDF/OF7X3grUAwAnU0ODu1+RuGrOdtOilBF/+XQ53izPaekhZdoadymYXWDTQYv4wR4MpF46IkAkuj4u6SakdsPNpjztJygkYQjDduD62mBP5HIzVHJOp2tuDJhQIDAQAB",
+  "permissions": [
+    "nativeMessaging"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "cleanbrowse"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

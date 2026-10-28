@@ -221,3 +221,11 @@ Run this before tagging a release, and re-run the **Core behaviour** and
   would fire early — don't have the same variant already open when you `run`.
 - This protects data **at rest between sessions**. It is not anti-forensics and not
   a Tor-style network-anonymity tool; your IP and network traffic are unchanged.
+
+## Project status
+
+**Status:** Waiting on Callum  
+**Waiting on:** Callum: run the testing checklist  
+**Notes:** Clean-session Chrome launcher. CI and release workflows are in place.  
+**Last updated:** 2026-10-28
+

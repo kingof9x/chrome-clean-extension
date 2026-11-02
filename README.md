@@ -224,8 +224,8 @@ Run this before tagging a release, and re-run the **Core behaviour** and
 
 ## Project status
 
-**Status:** Waiting on Callum  
-**Waiting on:** Callum: run the testing checklist  
+**Status:** Waiting on developer  
+**Waiting on:** Developer: run the testing checklist  
 **Notes:** Clean-session Chrome launcher. CI and release workflows are in place.  
-**Last updated:** 2026-10-28
+**Last updated:** 2026-11-02
 

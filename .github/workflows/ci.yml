@@ -28,14 +28,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Byte-compile the launcher
-        run: python -m py_compile cleanbrowse.py
+      - name: Byte-compile the launcher and GUI
+        run: python -m py_compile cleanbrowse.py cleanbrowse_gui.py
 
       - name: Validate JSON files
         shell: python
         run: |
           import json, glob, sys
-          files = ["config.example.json", "policies/managed_policy.json"]
+          files = ["config.example.json", "policies/managed_policy.json",
+                   "extension/manifest.json"]
           for f in files:
               with open(f, encoding="utf-8") as fh:
                   json.load(fh)

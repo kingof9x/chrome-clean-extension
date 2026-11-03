@@ -10,6 +10,12 @@ Google" (phone 2FA each session is expected and intended).
 Runs on **Windows, macOS, and Linux** and wraps **Google Chrome** and
 **ungoogled-chromium** (two independent "variants", each with its own template).
 
+> **Not a browser extension.** `cleanbrowse` is a small **app that launches and
+> wipes the browser around it** — something a Chrome extension is sandboxed and
+> cannot do. It ships as a **double-click app** (no terminal needed); there's also
+> a command-line interface for advanced use, and an optional companion extension
+> that adds a "start a clean session" button *inside* the browser.
+
 ## How it works
 
 You can't make Chrome selectively wipe itself, so `cleanbrowse` wraps it instead:
@@ -48,14 +54,13 @@ built automatically by GitHub Actions.
    - `cleanbrowse-windows.exe`
    - `cleanbrowse-macos`
    - `cleanbrowse-linux`
-2. Put it somewhere on your `PATH` (or just keep it in a folder you'll run it from).
+2. Put it somewhere handy (a folder you'll keep it in is fine).
 3. Make it executable on macOS/Linux, and clear the macOS quarantine flag:
    ```bash
    chmod +x cleanbrowse-macos            # or cleanbrowse-linux
    xattr -d com.apple.quarantine cleanbrowse-macos 2>/dev/null || true   # macOS only
    ```
-4. Run it. Everywhere the examples below say `python cleanbrowse.py`, use the binary
-   name instead, e.g. `./cleanbrowse-macos setup --variant chrome`.
+4. **Double-click it** (or run it with no arguments) to open the app window.
 
 > macOS Gatekeeper may still block an unsigned binary on first launch. If so:
 > right-click → Open once, or `System Settings → Privacy & Security → Open Anyway`.
@@ -63,34 +68,45 @@ built automatically by GitHub Actions.
 
 ### Option B — run from source
 
-Requires **Python 3.8+** (no third-party packages).
+Requires **Python 3.8+** (no third-party packages). Linux also needs Tk
+(`sudo apt install python3-tk`) for the app window; the command line works without it.
 
 ```bash
 git clone https://github.com/kingof9x/chrome-clean-extension
 cd chrome-clean-extension
-python cleanbrowse.py list
+python cleanbrowse.py            # opens the app window
 ```
 
-## Quick start
+## Using the app (no terminal)
+
+1. **Double-click** `cleanbrowse` to open the window.
+2. Click **Set up Chrome…** (and/or **Set up ungoogled…**). The browser opens on a
+   template profile — install only the extensions you trust, set your privacy
+   preferences (see *Setting up a hardened template* below), then **close the
+   browser** to save. Do this once per browser.
+3. Click **Start clean Google Chrome** (or ungoogled). You get a fresh, hardened
+   session with your extensions. Everything you do is wiped when you close it.
+4. *(Optional)* Click **Enable in-browser button…** to let the companion extension
+   start clean sessions from inside the browser — see *In-browser button* below.
+
+That's the whole workflow. No command line at any point.
+
+## Advanced: command line
+
+The same program is also a CLI (handy for scripting or headless setups). From a
+release binary, use its name in place of `python cleanbrowse.py` — e.g.
+`./cleanbrowse-macos run --variant chrome`.
 
 ```bash
-# 1. (optional) point the launcher at your browsers
-cp config.example.json config.json       # edit executable paths if auto-detect fails
+# optional: point the launcher at your browsers if auto-detect misses them
+cp config.example.json config.json
 
-# 2. build each template once — install trusted extensions, set hardened prefs, close
-python cleanbrowse.py setup --variant chrome
-python cleanbrowse.py setup --variant ungoogled
-
-# 3. daily use
-python cleanbrowse.py run --variant chrome
-python cleanbrowse.py run --variant ungoogled
-
-# open a URL directly, or pass extra browser flags after --
-python cleanbrowse.py run --variant chrome -- https://news.ycombinator.com
+python cleanbrowse.py setup --variant chrome      # build a template
+python cleanbrowse.py run   --variant chrome      # launch a clean session
+python cleanbrowse.py run   --variant chrome -- https://news.ycombinator.com
+python cleanbrowse.py list                        # variants + template status
+python cleanbrowse.py install-host                # wire up the in-browser button
 ```
-
-`python cleanbrowse.py list` shows which variants are configured and whether each
-template exists yet.
 
 ## Setting up a hardened template
 
@@ -105,6 +121,23 @@ In the `setup` window (Settings), the compatibility-safe hardening is:
 
 Then close the browser to freeze the template. Avoid signing into personal
 accounts in `setup` — accounts belong in `run` sessions, which get wiped.
+
+## In-browser button (optional companion extension)
+
+The app is the main way in. If you also want to start a clean session from a
+button *inside* the browser, there's a small companion extension in `extension/`.
+
+A Chrome extension can't wipe the browser itself (that's the whole reason this is
+an app, not an extension) — so the extension just sends a message to the
+cleanbrowse app, which does the work. Two things to know:
+
+- It **can't** start the very first session — the browser has to be open before
+  you can click a button in it. Use the app for the first launch.
+- It needs a one-time connection: click **Enable in-browser button…** in the app
+  (or run `cleanbrowse install-host`), then load `extension/` via
+  `chrome://extensions` → Developer mode → **Load unpacked**.
+
+Full steps are in [`extension/README.md`](extension/README.md).
 
 ## Compatibility notes (read these)
 
@@ -136,12 +169,18 @@ note Chrome and ungoogled-chromium read **different** policy locations.
 ## Files
 
 ```
-cleanbrowse.py            the launcher (setup / run / list)
+cleanbrowse.py            engine + CLI + native-messaging host (one program, many entry points)
+cleanbrowse_gui.py        the double-click app window (opens when run with no arguments)
+extension/                optional companion extension (in-browser "start clean session" button)
 config.example.json       copy to config.json to override exe paths, flags, template dirs
 policies/                 optional enterprise-policy hardening + install notes
 .github/workflows/        CI (cross-OS validation) + Release (builds standalone binaries)
-.gitignore                keeps config.json and templates/ out of git
+.gitignore                keeps config.json, templates/ and the generated .host/ out of git
 ```
+
+One binary does three jobs: run it with **no arguments** (double-click) and it
+opens the app; run it with a **command** (`run`, `setup`, …) and it's the CLI; when
+the **browser launches it** as a native host, it speaks the extension's protocol.
 
 ## Releasing / building binaries yourself
 
@@ -152,14 +191,19 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-That builds `cleanbrowse` for all three OSes with PyInstaller and attaches them to
-a new GitHub Release. To build locally instead:
+That builds the app for all three OSes with PyInstaller and attaches the binaries
+(plus `extension.zip`, the companion extension) to a new GitHub Release. To build
+locally instead:
 
 ```bash
 pip install pyinstaller
-pyinstaller --onefile --name cleanbrowse cleanbrowse.py
+pyinstaller --onefile --windowed --name cleanbrowse \
+    --hidden-import cleanbrowse_gui cleanbrowse.py
 # result in dist/cleanbrowse (or dist\cleanbrowse.exe on Windows)
 ```
+
+The single binary is the app (double-click), the CLI (run with a command), and the
+native-messaging host (launched by the browser) all at once.
 
 ## Testing checklist
 
@@ -207,12 +251,33 @@ Run this before tagging a release, and re-run the **Core behaviour** and
 - [ ] `ExtensionInstallForcelist` (when enabled) force-installs the listed extension by ID.
 - [ ] Policy hardening does not break DRM, bank, or Google login (re-run Compatibility with policy applied).
 
+### GUI app
+
+- [ ] Double-clicking the binary (or running it with no arguments) opens the app window.
+- [ ] **Set up Chrome…/ungoogled…** opens the template browser; closing it saves the template.
+- [ ] After setup, the **Start clean…** buttons enable; before setup they're disabled with a "set up first" hint.
+- [ ] **Start clean…** launches a session and the app stays responsive (can launch another).
+- [ ] Closing a GUI-launched session still wipes and deletes its temp profile.
+- [ ] **Enable in-browser button…** reports success and registers the native host.
+- [ ] On Linux, the app notes it needs `python3-tk`; the CLI still works without it.
+
+### Companion extension + native host
+
+- [ ] After `install-host` / "Enable in-browser button", the extension popup shows **"Launcher connected."**
+- [ ] Loaded unpacked, the extension's ID is exactly `aojnagceggjfaafhnpmcembajhoinhkk`.
+- [ ] Popup **Start clean Chrome / ungoogled** launches a clean session.
+- [ ] **End this session & restart clean** launches a clean instance, then closes the current windows.
+- [ ] With the host **not** installed, the popup shows the "Launcher not found" guidance rather than failing silently.
+- [ ] Chrome and ungoogled each need their own `install-host` run (separate registrations) — confirm both.
+- [ ] Extension installed in the **template** is present in launched clean sessions.
+
 ### CI / release automation
 
 - [ ] CI workflow passes on all three OSes for the supported Python versions.
-- [ ] Pushing a `v*` tag builds all three binaries and attaches them to a GitHub Release.
-- [ ] Each downloaded binary runs `--help` and `list` on its OS **without Python installed**.
+- [ ] Pushing a `v*` tag (or publishing a release) builds all three binaries + `extension.zip` and attaches them.
+- [ ] Each downloaded binary opens the app on its OS **without Python installed**.
 - [ ] macOS/Linux binaries are executable after `chmod +x`; the Gatekeeper "open anyway" step is accurate.
+- [ ] A Windows native-host round-trip works from the **windowed** binary (stdio reaches the host when the browser launches it).
 
 ## Caveats
 

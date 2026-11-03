@@ -42,6 +42,14 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SCRIPT_DIR / "config.json"
 DEFAULT_TEMPLATES_DIR = SCRIPT_DIR / "templates"
 
+# Companion Chrome extension: deterministic ID (from the embedded manifest key in
+# extension/manifest.json). The native-messaging host only accepts connections
+# from this extension. If you rebuild the extension with a different key, update
+# both places.
+HOST_NAME = "dev.nynex.cleanbrowse"
+EXTENSION_ID = "aojnagceggjfaafhnpmcembajhoinhkk"
+EXTENSION_ORIGIN = f"chrome-extension://{EXTENSION_ID}/"
+
 # Subdirectories/files the browser regenerates on its own -- never worth copying.
 # Matched by basename anywhere in the profile tree.
 COPY_IGNORE = {
@@ -265,6 +273,209 @@ def cmd_list(cfg, _args):
 
 
 # --------------------------------------------------------------------------- #
+# Self-invocation helper (works both from source and as a frozen binary)
+# --------------------------------------------------------------------------- #
+
+def self_command(*cli_args):
+    """Argv that re-runs THIS program with the given cleanbrowse args."""
+    if getattr(sys, "frozen", False):          # PyInstaller binary
+        return [sys.executable, *cli_args]
+    return [sys.executable, str(Path(__file__).resolve()), *cli_args]
+
+
+def _spawn_detached(cmd):
+    """Launch cmd fully detached so it outlives this process."""
+    kwargs = {}
+    if sys.platform.startswith("win"):
+        # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+        kwargs["creationflags"] = 0x00000008 | 0x00000200
+    else:
+        kwargs["start_new_session"] = True
+    subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kwargs)
+
+
+# --------------------------------------------------------------------------- #
+# Native-messaging host (the companion extension talks to this over stdio)
+# --------------------------------------------------------------------------- #
+
+def _nm_read():
+    """Read one native message: 4-byte little-endian length + UTF-8 JSON."""
+    import struct
+    raw_len = sys.stdin.buffer.read(4)
+    if len(raw_len) < 4:
+        return None  # stdin closed -> extension disconnected
+    (length,) = struct.unpack("<I", raw_len)
+    data = sys.stdin.buffer.read(length)
+    return json.loads(data.decode("utf-8"))
+
+
+def _nm_write(obj):
+    """Write one native message back to the extension."""
+    import struct
+    data = json.dumps(obj).encode("utf-8")
+    sys.stdout.buffer.write(struct.pack("<I", len(data)))
+    sys.stdout.buffer.write(data)
+    sys.stdout.buffer.flush()
+
+
+def run_native_host():
+    """
+    Entry point when the browser launches us as a native-messaging host.
+    The browser passes the calling extension's origin as an argument; nothing
+    may be printed to stdout except framed messages, or the protocol breaks.
+
+    Commands (JSON from the extension):
+      {"command": "ping"}                      -> {"ok": true, "pong": true}
+      {"command": "list"}                      -> {"ok": true, "variants": {...}}
+      {"command": "run", "variant": "chrome"}  -> launches a clean session,
+                                                  returns {"ok": true} immediately
+    """
+    cfg = load_config()
+    while True:
+        try:
+            msg = _nm_read()
+        except Exception as e:
+            _nm_write({"ok": False, "error": f"bad message: {e}"})
+            return
+        if msg is None:
+            return
+        cmd = (msg or {}).get("command")
+        try:
+            if cmd == "ping":
+                _nm_write({"ok": True, "pong": True, "app": APP_NAME})
+            elif cmd == "list":
+                out = {}
+                for name, vcfg in cfg["variants"].items():
+                    tmpl = template_dir(vcfg, name)
+                    out[name] = {"browser": vcfg["browser"],
+                                 "ready": tmpl.exists() and any(tmpl.glob("*"))}
+                _nm_write({"ok": True, "variants": out})
+            elif cmd == "run":
+                variant = msg.get("variant") or cfg["default_variant"]
+                if variant not in cfg["variants"]:
+                    _nm_write({"ok": False, "error": f"unknown variant '{variant}'"})
+                    continue
+                # Launch a detached child running the normal (blocking, self-
+                # cleaning) `run` command, so the new session manages its own
+                # temp-profile lifecycle and we can return at once.
+                _spawn_detached(self_command("run", "--variant", variant))
+                _nm_write({"ok": True, "launched": variant})
+            else:
+                _nm_write({"ok": False, "error": f"unknown command '{cmd}'"})
+        except Exception as e:
+            _nm_write({"ok": False, "error": str(e)})
+
+
+# --------------------------------------------------------------------------- #
+# Native-host installation (wires the browser up to call this program)
+# --------------------------------------------------------------------------- #
+
+def _host_manifest_dirs():
+    """Per-OS directories where Chrome/Chromium look for host manifests."""
+    home = Path.home()
+    plat = sys.platform
+    if plat == "darwin":
+        base = home / "Library" / "Application Support"
+        return {"chrome": base / "Google/Chrome/NativeMessagingHosts",
+                "chromium": base / "Chromium/NativeMessagingHosts"}
+    if plat.startswith("win"):
+        return {}  # Windows uses the registry, handled separately
+    base = home / ".config"
+    return {"chrome": base / "google-chrome/NativeMessagingHosts",
+            "chromium": base / "chromium/NativeMessagingHosts"}
+
+
+def _make_host_launcher() -> Path:
+    """
+    Return an absolute path to an executable the browser can launch as the host.
+    Frozen binary: that's us. From source: write a tiny shim that runs us via
+    the current Python, since a manifest 'path' must be a single executable.
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve()
+
+    shim_dir = SCRIPT_DIR / ".host"
+    shim_dir.mkdir(exist_ok=True)
+    script = str(Path(__file__).resolve())
+    if sys.platform.startswith("win"):
+        shim = shim_dir / "cleanbrowse-host.bat"
+        shim.write_text(f'@echo off\r\n"{sys.executable}" "{script}" %*\r\n',
+                        encoding="utf-8")
+    else:
+        shim = shim_dir / "cleanbrowse-host.sh"
+        shim.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n',
+                        encoding="utf-8")
+        os.chmod(shim, 0o755)
+    return shim.resolve()
+
+
+def _host_manifest(launcher: Path) -> dict:
+    return {
+        "name": HOST_NAME,
+        "description": "cleanbrowse native-messaging host (clean-session launcher)",
+        "path": str(launcher),
+        "type": "stdio",
+        "allowed_origins": [EXTENSION_ORIGIN],
+    }
+
+
+def cmd_install_host(cfg, args):
+    launcher = _make_host_launcher()
+    manifest = _host_manifest(launcher)
+    written = []
+
+    if sys.platform.startswith("win"):
+        import winreg
+        # Store the manifest next to the launcher, then point the registry at it.
+        man_path = (SCRIPT_DIR / ".host" / f"{HOST_NAME}.json").resolve()
+        man_path.parent.mkdir(exist_ok=True)
+        man_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        for root in (r"Software\Google\Chrome\NativeMessagingHosts",
+                     r"Software\Chromium\NativeMessagingHosts"):
+            key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, root + "\\" + HOST_NAME)
+            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, str(man_path))
+            winreg.CloseKey(key)
+            written.append(root)
+    else:
+        for browser, d in _host_manifest_dirs().items():
+            d.mkdir(parents=True, exist_ok=True)
+            path = d / f"{HOST_NAME}.json"
+            path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+            written.append(str(path))
+
+    print(f"[{APP_NAME}] native host installed; launcher:\n  {launcher}")
+    for w in written:
+        print(f"  registered: {w}")
+    print(f"[{APP_NAME}] load the extension in your browser (see extension/README.md),")
+    print(f"             then its ID must be {EXTENSION_ID}.")
+    return written
+
+
+def cmd_uninstall_host(cfg, args):
+    removed = []
+    if sys.platform.startswith("win"):
+        import winreg
+        for root in (r"Software\Google\Chrome\NativeMessagingHosts",
+                     r"Software\Chromium\NativeMessagingHosts"):
+            try:
+                winreg.DeleteKey(winreg.HKEY_CURRENT_USER, root + "\\" + HOST_NAME)
+                removed.append(root)
+            except FileNotFoundError:
+                pass
+    else:
+        for d in _host_manifest_dirs().values():
+            path = d / f"{HOST_NAME}.json"
+            if path.exists():
+                path.unlink()
+                removed.append(str(path))
+    print(f"[{APP_NAME}] native host removed ({len(removed)} entr{'y' if len(removed)==1 else 'ies'}).")
+    for r in removed:
+        print(f"  {r}")
+    return removed
+
+
+# --------------------------------------------------------------------------- #
 
 def die(msg: str):
     print(f"[{APP_NAME}] error: {msg}", file=sys.stderr)
@@ -272,6 +483,22 @@ def die(msg: str):
 
 
 def main():
+    # When the browser launches us as a native-messaging host, it passes the
+    # calling extension's origin (chrome-extension://...) as an argument. Detect
+    # that before argparse and switch into the stdio host loop.
+    if any(a.startswith("chrome-extension://") for a in sys.argv[1:]):
+        run_native_host()
+        return
+
+    # No arguments (e.g. double-clicking the app) -> open the GUI front end.
+    if len(sys.argv) == 1:
+        try:
+            import cleanbrowse_gui
+            cleanbrowse_gui.launch()
+            return
+        except Exception:
+            pass  # fall through to CLI help if the GUI can't be shown
+
     p = argparse.ArgumentParser(prog=APP_NAME, description="Ephemeral hardened Chromium with persistent trusted extensions.")
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -285,9 +512,15 @@ def main():
 
     sub.add_parser("list", help="show configured variants and template status")
 
+    sub.add_parser("install-host", help="register the native-messaging host for the companion extension")
+    sub.add_parser("uninstall-host", help="remove the native-messaging host registration")
+
     args = p.parse_args()
     cfg = load_config()
-    {"run": cmd_run, "setup": cmd_setup, "list": cmd_list}[args.command](cfg, args)
+    {
+        "run": cmd_run, "setup": cmd_setup, "list": cmd_list,
+        "install-host": cmd_install_host, "uninstall-host": cmd_uninstall_host,
+    }[args.command](cfg, args)
 
 
 if __name__ == "__main__":

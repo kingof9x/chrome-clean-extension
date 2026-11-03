@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      width: 280px;
+      margin: 0;
+      font: 13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: #1a2327;
+      color: #e8edef;
+    }
+    header { padding: 14px 16px 6px; }
+    h1 { margin: 0; font-size: 15px; }
+    .sub { color: #9fb0b6; font-size: 11px; margin-top: 2px; }
+    .body { padding: 8px 16px 14px; display: flex; flex-direction: column; gap: 8px; }
+    button {
+      font: inherit;
+      padding: 9px 10px;
+      border: 1px solid #34454c;
+      border-radius: 8px;
+      background: #223037;
+      color: #e8edef;
+      cursor: pointer;
+      text-align: left;
+    }
+    button:hover { background: #2b3c44; }
+    button.primary { border-color: #50dc96; }
+    button.danger { border-color: #c8603f; }
+    button:disabled { opacity: .5; cursor: default; }
+    .status {
+      padding: 8px 16px;
+      border-top: 1px solid #263238;
+      color: #9fb0b6;
+      font-size: 11px;
+      min-height: 16px;
+    }
+    .status.err { color: #ff9b7a; }
+    .status.ok { color: #7fe3b0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>cleanbrowse</h1>
+    <div class="sub">Keeps your trusted extensions, wipes everything else.</div>
+  </header>
+  <div class="body">
+    <button id="run-chrome" class="primary">Start clean Google Chrome</button>
+    <button id="run-ungoogled">Start clean ungoogled-chromium</button>
+    <button id="restart" class="danger">End this session &amp; restart clean</button>
+  </div>
+  <div id="status" class="status">Checking the launcher…</div>
+  <script src="popup.js"></script>
+</body>
+</html>

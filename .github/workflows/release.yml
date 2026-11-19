@@ -15,6 +15,7 @@ name: Release
 #      only -- binaries are kept as run artifacts, nothing is published.
 
 on:
+  pull_request:
   release:
     types: [published]
   push:
